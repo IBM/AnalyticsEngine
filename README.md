@@ -1,2 +1,2 @@
 # AnalyticsEngine
-Deploy Operator script for Analyticsengine Dataplane
+IBM Analytics Engine provides Apache Spark environments a service that decouples the compute and storage tiers to control costs, and achieve analytics at scale. Instead of a permanent cluster formed of dual-purpose nodes, IBM Analytics Engine enables users to store data in an object storage layer such as IBM Cloud Object Storage and spins up clusters of compute notes when needed. For added flexibility and cost predictability, usage-based consumption is available for Apache Spark environments.
