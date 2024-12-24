@@ -17,6 +17,8 @@ To deploy the operator on your physical location, login to the cluster via `oc` 
 ```
 ./deploy_operator.sh --namespace <management-namespace> --digest <just digest value without sha256>
 ```
+oc get analyticsenginedataplane -n <management-namespace>
+check and wait till analyticsenginedataplane cr to be in completed state.
 
 # Using AnalyticsEngine on a Remote Data Plane
 To use a AnalyticsEngine instance on a remote data plane with a project, an instance must be created and all saprk runtimes will be running on that instance. All resources needed to run spark runtimes will be created on the AnalyticsEngine opeartor. As a result, the jobs in this project may not run on other AnalyticsEngine instances.
