@@ -7,7 +7,4 @@ Each time you submit a job, a dedicated Spark cluster is created for the job. Yo
 
 When a job completes, the cluster is automatically cleaned up so that the resources are available for other jobs. The service also includes interfaces that enable you to analyze the performance of your Spark applications and debug problems.
 
-In IBM Cloud Pak for Data, you can run Spark workloads in two ways:
 
-In a notebook that runs in a Spark environment in a project in Watson Studio
-Outside Watson Studio, in an IBM Analytics Engine powered by Apache Spark instance using Spark job APIs
