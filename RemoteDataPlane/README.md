@@ -18,6 +18,7 @@ To deploy the operator on your physical location, login to the cluster via `oc` 
 ./deploy_operator.sh --namespace <management-namespace> --digest <just digest value without sha256>
 ```
 oc get analyticsenginedataplane -n <management-namespace>
+
 check and wait till analyticsenginedataplane cr to be in completed state.
 
 # Using AnalyticsEngine on a Remote Data Plane
