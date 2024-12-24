@@ -1,4 +1,4 @@
-#AnalyticsEngine on Remote Data Plane
+# AnalyticsEngine on Remote Data Plane
 
 To support deploying AnalyticsEngine on a remote data plane, the AnalyticsEngine operator needs to be deployed to the management namespace of the physical location associated with the remote data plane.
 
