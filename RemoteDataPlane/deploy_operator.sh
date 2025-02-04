@@ -70,7 +70,20 @@ spec:
                 description: Version of the AnalyticsEngineDataplane
                 type: string
             x-kubernetes-preserve-unknown-fields: true
+            properties:
+              versions:
+                properties:
+                  reconciled:
+                    type: string
+                required:
+                - reconciled
+                type: object
         type: object
+    additionalPrinterColumns:
+    - name: status
+      type: string
+      description: status of analyticsengine
+      jsonPath: .status.analyticsengineStatus
     served: true
     storage: true
     subresources:
@@ -79,7 +92,6 @@ EOF
 }
 
 create_service_account() {
-  #sed <"${serviceAccountFile}" "s#NAMESPACE_REPLACE#${namespace}#g" | $kubernetesCLI apply ${dryRun} -f -
   cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
 apiVersion: v1
 kind: ServiceAccount
@@ -276,6 +288,8 @@ spec:
       - args:
           - "--max-concurrent-reconciles"
           - "6"
+          - "--reconcile-period"
+          - "0s"
         image: ${OPERATOR_REGISTRY}/ibm-cpd-analyticsengine-dataplane-operator${OPERATOR_DIGEST}
         name: manager
         env:
