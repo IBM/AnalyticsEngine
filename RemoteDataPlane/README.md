@@ -15,7 +15,7 @@ Note: If using a private registry, an [image content source policy](https://www.
 To deploy the operator on your physical location, login to the cluster via `oc` with cluster-admin role and run the command below. The latest operator will be deploy when version is omitted.
 
 ```
-./deploy_operator.sh --namespace <management-namespace> --digest <just digest value without sha256>
+./deploy_operator.sh --namespace <management-namespace> --digest <just digest value without sha256> --version <version>
 ```
 `oc get analyticsenginedataplane -n <management-namespace>`
 
