@@ -1,4 +1,4 @@
-OPERATOR_REGISTRY="cp.icr.io/cp/cpd"
+OPERATOR_REGISTRY="cp.icr.io/cp"
 OPERATOR_DIGEST=""
 namespace=""
 kubernetesCLI="oc"
