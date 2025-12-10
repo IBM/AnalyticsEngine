@@ -4,6 +4,7 @@ namespace=""
 kubernetesCLI="oc"
 
 version=""
+pullPrefix=""
 
 verify_args() {
   # check if oc cli available
@@ -328,6 +329,31 @@ spec:
 EOF
 }
 
+# create_main_operator() {
+#   if [[ -n "$pullPrefix" ]]; then
+#     cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+# apiVersion: ae.cpd.ibm.com/v1
+# kind: AnalyticsEngineDataplane
+# metadata:
+#   name: analyticsenginedataplane-sample
+#   namespace: $namespace
+# spec:
+#   version: "$version"
+#   pullPrefix: "$pullPrefix"
+# EOF
+#   else
+#     cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+# apiVersion: ae.cpd.ibm.com/v1
+# kind: AnalyticsEngineDataplane
+# metadata:
+#   name: analyticsenginedataplane-sample
+#   namespace: $namespace
+# spec:
+#   version: "$version"
+# EOF
+#   fi
+# }
+
 create_main_operator() {
   cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
 apiVersion: ae.cpd.ibm.com/v1
@@ -337,16 +363,17 @@ metadata:
   namespace: $namespace
 spec:
   version: "$version"
+  pullPrefix: "$pullPrefix"
 EOF
 }
 
 handle_badusage() {
-    echo "Usage: $0 --namespace <namespace> --digest <digest> --version <vesrion>"
+    echo "Usage: $0 --namespace <namespace> --digest <digest> --version <vesrion> [--pullPrefix <prefix>]"
     exit 1
 }
 
 # Check for the correct number of parameters
-if [[ "$#" -ne 6 ]]; then
+if [[ "$#" -ne 6 && "$#" -ne 8 ]]; then
     handle_badusage
 fi
 
@@ -383,6 +410,21 @@ fi
 
 version="$6"
 echo "version: $version"
+
+if [[ "$#" -eq 8 ]]; then
+  if [[ "$7" != "--pullPrefix" ]]; then
+      echo "Error: Invalid fourth parameter."
+      handle_badusage
+  fi
+  pullPrefix="$8"
+  echo "pullPrefix: $pullPrefix"
+fi
+
+#  add this block:
+if [[ -z "$pullPrefix" ]]; then
+  pullPrefix="cp.icr.io/cp/cpd"
+  echo "pullPrefix not provided, using default: $pullPrefix"
+fi
 
 PHYSICAL_LOCATION_NAME=""
 PHYSICAL_LOCATION_ID=""
