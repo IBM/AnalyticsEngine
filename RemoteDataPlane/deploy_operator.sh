@@ -1,6 +1,6 @@
 OPERATOR_REGISTRY="icr.io/cpopen"
 OPERATOR_DIGEST=""
-namespace=""
+management_namespace=""
 kubernetesCLI="oc"
 workload_namespace=""
 
@@ -16,20 +16,33 @@ verify_args() {
   fi
   
   # check if the specified namespace exists and is a management namespace
-  oc get namespace $namespace &> /dev/null
+  oc get namespace $management_namespace &> /dev/null
   if [ $? -ne 0 ]; then
-    echo "Namespace $namespace not found."
+    echo "Management Namespace $management_namespace not found."
     exit 3
   fi
-  oc -n $namespace get cm physical-location-info-cm &> /dev/null
+  oc -n $management_namespace get cm physical-location-info-cm &> /dev/null
   if [ $? -ne 0 ]; then
-    echo "The specified namespace $namespace is not a management namespace. Unable to locate the configmap physical-location-info-cm."
+    echo "The specified namespace $management_namespace is not a management namespace. Unable to locate the configmap physical-location-info-cm."
+    exit 3
+  fi
+
+  # check if workload namespace parameter is provided
+  if [[ -z "$workload_namespace" ]]; then
+    echo "workload_namespace not provided."
+    exit 3
+  fi
+
+  # check if workload namespace exists
+  oc get namespace $workload_namespace &> /dev/null
+  if [ $? -ne 0 ]; then
+    echo "Workload namespace $workload_namespace not found."
     exit 3
   fi
 }
 
 create_analyticsengine_crd() {
-  cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+  cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -94,7 +107,7 @@ EOF
 }
 
 create_service_account() {
-  cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+  cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -102,12 +115,12 @@ metadata:
     app.kubernetes.io/name: analyticsenginedataplane
     app.kubernetes.io/managed-by: kustomize
   name: zen-norbac-sa
-  namespace: $namespace
+  namespace: $management_namespace
 EOF
 }
 
 create_role() {
-  cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+  cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -198,7 +211,7 @@ EOF
 }
 
 create_role_binding() {
-  cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+  cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -213,7 +226,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: zen-norbac-sa
-  namespace: $namespace
+  namespace: $management_namespace
 EOF
 }
 
@@ -278,9 +291,9 @@ EOF
 }
 
 get_plnameid_from_cm() {
-    config_map_json=$(oc get cm physical-location-info-cm -n "$namespace" -o json)
+    config_map_json=$(oc get cm physical-location-info-cm -n "$management_namespace" -o json)
     if [ $? -ne 0 ]; then
-        echo "Failed to get ConfigMap physical-location-info-cm in namespace $namespace."
+        echo "Failed to get ConfigMap physical-location-info-cm in namespace $management_namespace."
         return 1
     fi
 
@@ -293,12 +306,12 @@ get_plnameid_from_cm() {
 }
 
 create_operator_deployment() {
-  cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+  cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ibm-cpd-aedataplane-operator
-  namespace: $namespace
+  namespace: $management_namespace
   labels:
     control-plane: controller-manager
     app.kubernetes.io/name: analyticsenginedataplane
@@ -358,7 +371,7 @@ spec:
         - name: ANSIBLE_GATHERING
           value: explicit
         - name: WATCH_NAMESPACE
-          value: $namespace
+          value: $management_namespace
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -392,23 +405,23 @@ EOF
 
 # create_main_operator() {
 #   if [[ -n "$pullPrefix" ]]; then
-#     cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+#     cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 # apiVersion: ae.cpd.ibm.com/v1
 # kind: AnalyticsEngineDataplane
 # metadata:
 #   name: analyticsenginedataplane-sample
-#   namespace: $namespace
+#   namespace: $management_namespace
 # spec:
 #   version: "$version"
 #   pullPrefix: "$pullPrefix"
 # EOF
 #   else
-#     cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+#     cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 # apiVersion: ae.cpd.ibm.com/v1
 # kind: AnalyticsEngineDataplane
 # metadata:
 #   name: analyticsenginedataplane-sample
-#   namespace: $namespace
+#   namespace: $management_namespace
 # spec:
 #   version: "$version"
 # EOF
@@ -416,12 +429,12 @@ EOF
 # }
 
 create_main_operator() {
-  cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+  cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 apiVersion: ae.cpd.ibm.com/v1
 kind: AnalyticsEngineDataplane
 metadata:
   name: analyticsenginedataplane-sample
-  namespace: $namespace
+  namespace: $management_namespace
 spec:
   version: "$version"
   pullPrefix: "$pullPrefix"
@@ -447,13 +460,14 @@ fi
 #     handle_badusage
 # fi
 
-if [[ "$1" != "--namespace" ]]; then
+if [[ "$1" != "--management_namespace" ]]; then
     echo "Error: Invalid first parameter."
     handle_badusage
     exit 1
 fi
 
-namespace="$2"
+management_namespace="$2"
+echo "management_namespace: $management_namespace"
 
 if [[ "$3" != "--digest" ]]; then
     echo "Error: Invalid second parameter."
