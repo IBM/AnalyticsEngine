@@ -2,6 +2,7 @@ OPERATOR_REGISTRY="icr.io/cpopen"
 OPERATOR_DIGEST=""
 namespace=""
 kubernetesCLI="oc"
+workload_namespace=""
 
 version=""
 pullPrefix=""
@@ -216,6 +217,66 @@ subjects:
 EOF
 }
 
+create_workload_service_account() {
+cat <<EOF | $kubernetesCLI -n $workload_namespace apply ${dryRun} -f -
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wxd-privileged
+  namespace: $workload_namespace
+EOF
+}
+
+create_workload_cluster_role() {
+cat <<EOF | $kubernetesCLI apply ${dryRun} -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mira-role-tmp-delete
+rules:
+- apiGroups: ["", "apps", "events.k8s.io"]
+  resources:
+  - pods
+  - pods/attach
+  - pods/log
+  - pods/portforward
+  - persistentvolumeclaims
+  - persistentvolumes
+  - services
+  - deployments
+  - namespaces
+  - configmaps
+  - secrets
+  - replicasets
+  - events
+  verbs:
+  - create
+  - get
+  - watch
+  - list
+  - delete
+  - update
+  - patch
+EOF
+}
+
+create_workload_cluster_role_binding() {
+cat <<EOF | $kubernetesCLI apply ${dryRun} -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mira-rolebinding-tmp-delete
+subjects:
+- kind: ServiceAccount
+  name: wxd-privileged
+  namespace: $workload_namespace
+roleRef:
+  kind: ClusterRole
+  name: mira-role-tmp-delete
+  apiGroup: rbac.authorization.k8s.io
+EOF
+}
+
 get_plnameid_from_cm() {
     config_map_json=$(oc get cm physical-location-info-cm -n "$namespace" -o json)
     if [ $? -ne 0 ]; then
@@ -368,12 +429,12 @@ EOF
 }
 
 handle_badusage() {
-    echo "Usage: $0 --namespace <namespace> --digest <digest> --version <vesrion> [--pullPrefix <prefix>]"
+    echo "Usage: $0 --namespace <namespace> --digest <digest> --version <version> --workload_namespace <workload_namespace> [--pullPrefix <prefix>]"
     exit 1
 }
 
 # Check for the correct number of parameters
-if [[ "$#" -ne 6 && "$#" -ne 8 ]]; then
+if [[ "$#" -ne 8 && "$#" -ne 10 ]]; then
     handle_badusage
 fi
 
@@ -411,12 +472,21 @@ fi
 version="$6"
 echo "version: $version"
 
-if [[ "$#" -eq 8 ]]; then
-  if [[ "$7" != "--pullPrefix" ]]; then
-      echo "Error: Invalid fourth parameter."
+if [[ "$7" != "--workload_namespace" ]]; then
+    echo "Error: Invalid fourth parameter."
+    handle_badusage
+    exit 1
+fi
+
+workload_namespace="$8"
+echo "workload_namespace: $workload_namespace"
+
+if [[ "$#" -eq 10 ]]; then
+  if [[ "$9" != "--pullPrefix" ]]; then
+      echo "Error: Invalid fifth parameter."
       handle_badusage
   fi
-  pullPrefix="$8"
+  pullPrefix="${10}"
   echo "pullPrefix: $pullPrefix"
 fi
 
@@ -435,6 +505,9 @@ create_analyticsengine_crd
 create_service_account
 create_role
 create_role_binding
+create_workload_service_account
+create_workload_cluster_role
+create_workload_cluster_role_binding
 get_plnameid_from_cm
 create_operator_deployment
 create_main_operator
