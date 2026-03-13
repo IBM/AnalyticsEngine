@@ -1,7 +1,8 @@
 OPERATOR_REGISTRY="icr.io/cpopen"
 OPERATOR_DIGEST=""
-namespace=""
+management_namespace=""
 kubernetesCLI="oc"
+workload_namespace=""
 
 version=""
 pullPrefix=""
@@ -15,20 +16,33 @@ verify_args() {
   fi
   
   # check if the specified namespace exists and is a management namespace
-  oc get namespace $namespace &> /dev/null
+  oc get namespace $management_namespace &> /dev/null
   if [ $? -ne 0 ]; then
-    echo "Namespace $namespace not found."
+    echo "Management Namespace $management_namespace not found."
     exit 3
   fi
-  oc -n $namespace get cm physical-location-info-cm &> /dev/null
+  oc -n $management_namespace get cm physical-location-info-cm &> /dev/null
   if [ $? -ne 0 ]; then
-    echo "The specified namespace $namespace is not a management namespace. Unable to locate the configmap physical-location-info-cm."
+    echo "The specified namespace $management_namespace is not a management namespace. Unable to locate the configmap physical-location-info-cm."
+    exit 3
+  fi
+
+  # check if workload namespace parameter is provided
+  if [[ -z "$workload_namespace" ]]; then
+    echo "workload_namespace not provided."
+    exit 3
+  fi
+
+  # check if workload namespace exists
+  oc get namespace $workload_namespace &> /dev/null
+  if [ $? -ne 0 ]; then
+    echo "Workload namespace $workload_namespace not found."
     exit 3
   fi
 }
 
 create_analyticsengine_crd() {
-  cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+  cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -93,7 +107,7 @@ EOF
 }
 
 create_service_account() {
-  cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+  cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -101,12 +115,12 @@ metadata:
     app.kubernetes.io/name: analyticsenginedataplane
     app.kubernetes.io/managed-by: kustomize
   name: zen-norbac-sa
-  namespace: $namespace
+  namespace: $management_namespace
 EOF
 }
 
 create_role() {
-  cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+  cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -197,7 +211,7 @@ EOF
 }
 
 create_role_binding() {
-  cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+  cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -212,14 +226,74 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: zen-norbac-sa
-  namespace: $namespace
+  namespace: $management_namespace
+EOF
+}
+
+create_workload_service_account() {
+cat <<EOF | $kubernetesCLI -n $workload_namespace apply ${dryRun} -f -
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wxd-privileged
+  namespace: $workload_namespace
+EOF
+}
+
+create_workload_cluster_role() {
+cat <<EOF | $kubernetesCLI apply ${dryRun} -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mira-role-tmp-delete
+rules:
+- apiGroups: ["", "apps", "events.k8s.io"]
+  resources:
+  - pods
+  - pods/attach
+  - pods/log
+  - pods/portforward
+  - persistentvolumeclaims
+  - persistentvolumes
+  - services
+  - deployments
+  - namespaces
+  - configmaps
+  - secrets
+  - replicasets
+  - events
+  verbs:
+  - create
+  - get
+  - watch
+  - list
+  - delete
+  - update
+  - patch
+EOF
+}
+
+create_workload_cluster_role_binding() {
+cat <<EOF | $kubernetesCLI apply ${dryRun} -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mira-rolebinding-tmp-delete
+subjects:
+- kind: ServiceAccount
+  name: wxd-privileged
+  namespace: $workload_namespace
+roleRef:
+  kind: ClusterRole
+  name: mira-role-tmp-delete
+  apiGroup: rbac.authorization.k8s.io
 EOF
 }
 
 get_plnameid_from_cm() {
-    config_map_json=$(oc get cm physical-location-info-cm -n "$namespace" -o json)
+    config_map_json=$(oc get cm physical-location-info-cm -n "$management_namespace" -o json)
     if [ $? -ne 0 ]; then
-        echo "Failed to get ConfigMap physical-location-info-cm in namespace $namespace."
+        echo "Failed to get ConfigMap physical-location-info-cm in namespace $management_namespace."
         return 1
     fi
 
@@ -232,12 +306,12 @@ get_plnameid_from_cm() {
 }
 
 create_operator_deployment() {
-  cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+  cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ibm-cpd-aedataplane-operator
-  namespace: $namespace
+  namespace: $management_namespace
   labels:
     control-plane: controller-manager
     app.kubernetes.io/name: analyticsenginedataplane
@@ -297,7 +371,7 @@ spec:
         - name: ANSIBLE_GATHERING
           value: explicit
         - name: WATCH_NAMESPACE
-          value: $namespace
+          value: $management_namespace
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -331,23 +405,23 @@ EOF
 
 # create_main_operator() {
 #   if [[ -n "$pullPrefix" ]]; then
-#     cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+#     cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 # apiVersion: ae.cpd.ibm.com/v1
 # kind: AnalyticsEngineDataplane
 # metadata:
 #   name: analyticsenginedataplane-sample
-#   namespace: $namespace
+#   namespace: $management_namespace
 # spec:
 #   version: "$version"
 #   pullPrefix: "$pullPrefix"
 # EOF
 #   else
-#     cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+#     cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 # apiVersion: ae.cpd.ibm.com/v1
 # kind: AnalyticsEngineDataplane
 # metadata:
 #   name: analyticsenginedataplane-sample
-#   namespace: $namespace
+#   namespace: $management_namespace
 # spec:
 #   version: "$version"
 # EOF
@@ -355,12 +429,12 @@ EOF
 # }
 
 create_main_operator() {
-  cat <<EOF | $kubernetesCLI -n $namespace apply ${dryRun} -f -
+  cat <<EOF | $kubernetesCLI -n $management_namespace apply ${dryRun} -f -
 apiVersion: ae.cpd.ibm.com/v1
 kind: AnalyticsEngineDataplane
 metadata:
   name: analyticsenginedataplane-sample
-  namespace: $namespace
+  namespace: $management_namespace
 spec:
   version: "$version"
   pullPrefix: "$pullPrefix"
@@ -368,12 +442,12 @@ EOF
 }
 
 handle_badusage() {
-    echo "Usage: $0 --namespace <namespace> --digest <digest> --version <vesrion> [--pullPrefix <prefix>]"
+    echo "Usage: $0 --namespace <namespace> --digest <digest> --version <version> --workload_namespace <workload_namespace> [--pullPrefix <prefix>]"
     exit 1
 }
 
 # Check for the correct number of parameters
-if [[ "$#" -ne 6 && "$#" -ne 8 ]]; then
+if [[ "$#" -ne 8 && "$#" -ne 10 ]]; then
     handle_badusage
 fi
 
@@ -386,13 +460,14 @@ fi
 #     handle_badusage
 # fi
 
-if [[ "$1" != "--namespace" ]]; then
+if [[ "$1" != "--management_namespace" ]]; then
     echo "Error: Invalid first parameter."
     handle_badusage
     exit 1
 fi
 
-namespace="$2"
+management_namespace="$2"
+echo "management_namespace: $management_namespace"
 
 if [[ "$3" != "--digest" ]]; then
     echo "Error: Invalid second parameter."
@@ -411,12 +486,21 @@ fi
 version="$6"
 echo "version: $version"
 
-if [[ "$#" -eq 8 ]]; then
-  if [[ "$7" != "--pullPrefix" ]]; then
-      echo "Error: Invalid fourth parameter."
+if [[ "$7" != "--workload_namespace" ]]; then
+    echo "Error: Invalid fourth parameter."
+    handle_badusage
+    exit 1
+fi
+
+workload_namespace="$8"
+echo "workload_namespace: $workload_namespace"
+
+if [[ "$#" -eq 10 ]]; then
+  if [[ "$9" != "--pullPrefix" ]]; then
+      echo "Error: Invalid fifth parameter."
       handle_badusage
   fi
-  pullPrefix="$8"
+  pullPrefix="${10}"
   echo "pullPrefix: $pullPrefix"
 fi
 
@@ -435,6 +519,9 @@ create_analyticsengine_crd
 create_service_account
 create_role
 create_role_binding
+create_workload_service_account
+create_workload_cluster_role
+create_workload_cluster_role_binding
 get_plnameid_from_cm
 create_operator_deployment
 create_main_operator
