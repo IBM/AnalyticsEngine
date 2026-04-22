@@ -365,7 +365,7 @@ spec:
           - "6"
           - "--reconcile-period"
           - "0s"
-        image: ${OPERATOR_REGISTRY}/ibm-cpd-analyticsengine-dataplane-operator${OPERATOR_DIGEST}
+        image: ${OPERATOR_REGISTRY}/ibm-cpd-lh-spark-dataplane-operator${OPERATOR_DIGEST}
         name: manager
         env:
         - name: ANSIBLE_GATHERING
